@@ -77,11 +77,17 @@ class HelloFS(fuse.Fuse):
         return buf
 
 
-def main():
-    server = HelloFS(version="%prog " + fuse.__version__, dash_s_do="setsingle")
+from . import euph
 
-    server.parse(errex=1)
-    server.main()
+def main():
+    # server = HelloFS(version="%prog " + fuse.__version__, dash_s_do="setsingle")
+
+    # server.parse(errex=1)
+    # server.main()
+
+    room = euph.Room("test")
+    room.start()
+    pass
 
 
 if __name__ == "__main__":

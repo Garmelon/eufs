@@ -1,0 +1,17 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "eufs"
+version = "0.0.0"
+description = "FUSE-based euphoria.leet.nu client"
+authors = []
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fuse-python = "^1.0.7"
+
+[tool.poetry.scripts]
+eufs = "eufs.main:main"

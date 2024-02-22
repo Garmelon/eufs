@@ -1,93 +1,134 @@
 import errno
 import os
 import stat
+import threading
+from pathlib import Path
 
 import fuse
+
+from . import euph
+
 
 fuse.fuse_python_api = (0, 2)
 
 
-# For debugging
+class EuFs(fuse.Fuse):
+    def __init__(self, *args, **kwargs):
+        fuse.Fuse.__init__(self, *args, **kwargs)
 
-f = open("log.txt", "w")
+        self.rooms = {}
 
+        self.join_room("test")
 
-def log(str):
-    f.write(f"{str}\n")
-    f.flush()
+    def join_room(self, name):
+        # Not threadsafe, but using threading.Lock broke things
+        if name in self.rooms:
+            return
 
+        room = euph.Room(name)
+        room.start()
+        self.rooms[name] = room
+        print(f"Joined &{name}")
 
-hello_path = "/hello"
-hello_str = b"Hello World!\n"
+    def leave_room(self, name):
+        # Not threadsafe, but using threading.Lock broke things
+        if name not in self.rooms:
+            return
 
+        room = self.rooms[name]
+        room.stop()
+        del self.rooms[name]
+        print(f"Left &{name}")
 
-class MyStat(fuse.Stat):
-    def __init__(self):
-        self.st_mode = 0
-        self.st_ino = 0
-        self.st_dev = 0
-        self.st_nlink = 0
-        self.st_uid = 0
-        self.st_gid = 0
-        self.st_size = 0
-        self.st_atime = 0
-        self.st_mtime = 0
-        self.st_ctime = 0
-
-
-class HelloFS(fuse.Fuse):
     def getattr(self, path):
-        log(f"getattr: {path!r}")
-        st = MyStat()
-        if path == "/":
-            st.st_mode = stat.S_IFDIR | 0o755
-            st.st_nlink = 2
-        elif path == hello_path:
-            st.st_mode = stat.S_IFREG | 0o444
-            st.st_nlink = 1
-            st.st_size = len(hello_str)
-        else:
+        print(f"getattr: {path!r}")
+
+        parts = Path(path).parts
+        if parts == ("/",):
+            print(f"  is root")
+            return fuse.Stat(
+                st_mode=stat.S_IFDIR | 0o755,
+                st_nlink=1,
+            )
+        print(f"  is not root")
+
+        roomname = parts[1]
+        texts = parts[2:]
+
+        room = self.rooms.get(roomname)
+        if not room:
+            print(f"  is invalid room")
             return -errno.ENOENT
-        return st
+        print(f"  is valid room")
+        if texts == ():
+            return fuse.Stat(
+                st_mode=stat.S_IFDIR | 0o755,
+                st_nlink=1,
+            )
+
+        msg = room.find_msg_by_texts(texts)
+        if not msg:
+            print(f"  is invalid msg")
+            return -errno.ENOENT
+        print(f"  is valid msg")
+
+        return fuse.Stat(
+            st_mode=stat.S_IFDIR | 0o755,
+            st_nlink=1,
+            st_ctime=msg.time,
+            st_mtime=msg.time,
+            st_atime=msg.time,
+        )
 
     def readdir(self, path, offset):
-        log(f"readdir: {path!r} {offset!r}")
-        for r in ".", "..", hello_path[1:]:
-            yield fuse.Direntry(r)
+        print(f"readdir: {path!r} {offset!r}")
 
-    def open(self, path, flags):
-        log(f"open: {path!r} {flags!r}")
-        if path != hello_path:
-            return -errno.ENOENT
-        accmode = os.O_RDONLY | os.O_WRONLY | os.O_RDWR
-        if (flags & accmode) != os.O_RDONLY:
-            return -errno.EACCES
+        parts = Path(path).parts
+        if parts == ("/",):
+            print(f"  is root")
+            yield fuse.Direntry(".")
+            yield fuse.Direntry("..")
+            for room in self.rooms:
+                yield fuse.Direntry(room)
+            return
+        print(f"  is not root")
 
-    def read(self, path, size, offset):
-        log(f"read: {path!r} {size!r} {offset!r}")
-        if path != hello_path:
-            return -errno.ENOENT
-        slen = len(hello_str)
-        if offset < slen:
-            if offset + size > slen:
-                size = slen - offset
-            buf = hello_str[offset : offset + size]
+        roomname = parts[1]
+        texts = parts[2:]
+
+        room = self.rooms.get(roomname)
+        if not room:
+            print(f"  is invalid room")
+            return
+        print(f"  is valid room")
+
+        if texts == ():
+            print("  children from room")
+            children = {
+                mid: msg for mid, msg in room.msgs.items() if msg.parent == None
+            }
         else:
-            buf = b""
-        return buf
+            msg = room.find_msg_by_texts(texts)
+            if not msg:
+                print(f"  is invalid msg")
+            print(f"  is valid msg")
+            print("  children from msg")
+            children = msg.children
 
+        print(children)
 
-from . import euph
+        children = list(children.values())
+        children.sort(key=lambda m: m.time)
+        for child in children:
+            print(child.text)
+            yield fuse.Direntry(child.text)
+
 
 def main():
-    # server = HelloFS(version="%prog " + fuse.__version__, dash_s_do="setsingle")
+    server = EuFs(version="%prog " + fuse.__version__, dash_s_do="setsingle")
 
-    # server.parse(errex=1)
-    # server.main()
-
-    room = euph.Room("test")
-    room.start()
-    pass
+    server.parse(errex=1)
+    server.main()
 
 
 if __name__ == "__main__":

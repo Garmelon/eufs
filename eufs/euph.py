@@ -16,8 +16,17 @@ class Message:
         self.id = mid
         self.parent = mparent
         self.time = mtime
-        self.text = f"{mid} [{mnick}] {mcontent}"
+        self.text = f"[{mnick}] {mcontent}"
         self.children = {}  # id -> msg
+
+        self.text = self.text.replace("/", "?")[:50]
+        print(mid, mparent)
+
+
+def find_msg_by_text(msgs, text):
+    for msg in msgs.values():
+        if msg.text == text:
+            return msg
 
 
 class Room:
@@ -32,12 +41,24 @@ class Room:
         self.msgs = {}  # id -> msg
 
     def start(self):
-        t = threading.Thread(target=Room._run, args=(self,))
+        t = threading.Thread(target=Room._run, args=(self,), daemon=True)
         t.start()
 
     def stop(self):
         self.alive = False
         self.ws.close()
+
+    def find_msg_by_texts(self, texts):
+        msg = None
+        children = {mid: msg for mid, msg in self.msgs.items() if msg.parent == None}
+
+        for text in texts:
+            msg = find_msg_by_text(children, text)
+            if not msg:
+                return
+            children = msg.children
+
+        return msg
 
     def _run(self):
         while self.alive:

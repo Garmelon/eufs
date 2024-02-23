@@ -48,6 +48,9 @@ class Room:
         self.alive = False
         self.ws.close()
 
+    def send(self, content, parent=None):
+        self._send("send", content=content, parent=parent)
+
     def find_msg_by_texts(self, texts):
         msg = None
         children = {mid: msg for mid, msg in self.msgs.items() if msg.parent == None}
@@ -103,6 +106,10 @@ class Room:
                 self._on_hello_event(data)
             case "snapshot-event":
                 self._on_snapshot_event(data)
+            case "send-event":
+                self._on_send_event(data)
+            case "send-reply":
+                self._on_send_event(data)
 
         print(packet["type"])
 
@@ -128,3 +135,12 @@ class Room:
                     parent.children[msg.id] = msg
 
         self._send("nick", name="garmtest")
+
+    def _on_send_event(self, data):
+        msg = Message(data)
+        self.msgs[msg.id] = msg
+
+        if msg.parent is not None:
+            parent = self.msgs.get(msg.parent)
+            if parent is not None:
+                parent.children[msg.id] = msg

@@ -123,6 +123,45 @@ class EuFs(fuse.Fuse):
             print(child.text)
             yield fuse.Direntry(child.text)
 
+    def mkdir(self, path, mode):
+        print(f"mkdir: {path!r} {mode!r}")
+
+        parts = Path(path).parts
+        if parts == ("/",):
+            print(f"  is root")
+            return -errno.EEXIST
+        print(f"  is not root")
+
+        roomname = parts[1]
+        texts = parts[2:]
+
+        room = self.rooms.get(roomname)
+        if not room:
+            print(f"  is invalid room")
+            return -errno.ENOENT
+        print(f"  is valid room")
+
+        if texts == ():
+            print(f"  is no content")
+            return -errno.EEXIST
+
+        content = texts[-1]
+        texts = texts[:-1]
+
+        if texts == ():
+            print("  is root message")
+            room.send(content)
+            return
+
+        msg = room.find_msg_by_texts(texts)
+        if not msg:
+            print(f"  is invalid msg")
+            return -errno.ENOENT
+        print(f"  is valid msg")
+
+        print("  is child message")
+        room.send(content, parent=msg.id)
+
 
 def main():
     server = EuFs(version="%prog " + fuse.__version__, dash_s_do="setsingle")
